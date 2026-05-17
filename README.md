@@ -1,7 +1,7 @@
 # Payment QA Automation Demo
 
-[![Payment QA Suite](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](https://github.com/YOUR_USERNAME/payment-qa-demo/actions)
-[![Tests](https://img.shields.io/badge/tests-29%20passing-1D9E75)](https://github.com/YOUR_USERNAME/payment-qa-demo/actions)
+[![Payment QA Suite](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](https://github.com/SHABCODES/payment-qa-automation/actions)
+[![Tests](https://img.shields.io/badge/tests-29%20passing-1D9E75)](https://github.com/SHABCODES/payment-qa-automation/actions)
 [![Robot Framework](https://img.shields.io/badge/Robot_Framework-7.1-black?logo=robot-framework)](https://robotframework.org)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 
