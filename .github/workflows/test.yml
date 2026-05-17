@@ -1,0 +1,119 @@
+name: Payment QA Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 6 * * 1-5'   # Run every weekday at 06:00 UTC (simulates nightly regression)
+
+jobs:
+  test:
+    name: Robot Framework Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start payment API
+        run: |
+          python -m uvicorn api.payment_api:app \
+            --host 127.0.0.1 --port 8001 \
+            --log-level warning &
+          echo "API_PID=$!" >> $GITHUB_ENV
+          sleep 3
+          curl -sf http://127.0.0.1:8001/health || (echo "API failed to start" && exit 1)
+
+      - name: Run Robot Framework tests
+        run: |
+          python -m robot \
+            --outputdir results \
+            --loglevel INFO \
+            --report report.html \
+            --log log.html \
+            --output output.xml \
+            tests/suites/
+
+      - name: Generate QA dashboard
+        if: always()
+        run: |
+          python dashboard/parse_results.py results/output.xml --out results/dashboard.html
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-results-${{ github.run_number }}
+          path: |
+            results/output.xml
+            results/log.html
+            results/report.html
+            results/dashboard.html
+          retention-days: 30
+
+      - name: Publish RF results summary to GitHub Summary
+        if: always()
+        run: |
+          python - <<'EOF'
+          import xml.etree.ElementTree as ET, sys
+          try:
+              root = ET.parse("results/output.xml").getroot()
+              stats = root.find(".//total/stat")
+              passed = int(stats.attrib.get("pass", 0))
+              failed = int(stats.attrib.get("fail", 0))
+              total  = passed + failed
+              rate   = round(passed / total * 100) if total else 0
+              icon   = "✅" if failed == 0 else "❌"
+              lines  = [
+                  f"## {icon} Payment QA Results — Run #{sys.argv[1] if len(sys.argv)>1 else ''}",
+                  f"| Metric | Value |",
+                  f"|--------|-------|",
+                  f"| Total tests | {total} |",
+                  f"| Passed | {passed} |",
+                  f"| Failed | {failed} |",
+                  f"| Pass rate | {rate}% |",
+                  "",
+                  "### Suite breakdown",
+                  "| Suite | Pass | Fail |",
+                  "|-------|------|------|",
+              ]
+              for suite in root.iter("suite"):
+                  tests = suite.findall("test")
+                  if not tests:
+                      continue
+                  p = sum(1 for t in tests if t.find("status").attrib.get("status")=="PASS")
+                  f = len(tests) - p
+                  lines.append(f"| {suite.attrib.get('name')} | {p} | {f} |")
+              with open("$GITHUB_STEP_SUMMARY", "a") as fh:
+                  fh.write("\n".join(lines))
+          except Exception as e:
+              print(f"Summary generation failed: {e}")
+          EOF
+
+      - name: Stop API
+        if: always()
+        run: kill $API_PID 2>/dev/null || true
+
+      - name: Fail if tests failed
+        run: |
+          python - <<'EOF'
+          import xml.etree.ElementTree as ET, sys
+          root = ET.parse("results/output.xml").getroot()
+          stats = root.find(".//total/stat")
+          failed = int(stats.attrib.get("fail", 0))
+          if failed > 0:
+              print(f"::error::{failed} test(s) failed")
+              sys.exit(1)
+          print(f"All tests passed.")
+          EOF
